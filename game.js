@@ -13,6 +13,7 @@ const COLORS = [
   '#e57373', // Z - red
   '#7986cb', // J - indigo
   '#ffb74d', // L - orange
+  '#90a4ae', // N - tuerca (gris metálico)
 ];
 
 const PIECES = [
@@ -24,6 +25,7 @@ const PIECES = [
   [[5,5,0],[0,5,5],[0,0,0]],                  // Z
   [[6,0,0],[6,6,6],[0,0,0]],                  // J
   [[0,0,7],[7,7,7],[0,0,0]],                  // L
+  [[8,8,8],[8,0,8],[8,8,8]],                  // N - tuerca
 ];
 
 const LINE_SCORES = [0, 100, 300, 500, 800];
@@ -41,13 +43,66 @@ const overlayScore = document.getElementById('overlay-score');
 const restartBtn = document.getElementById('restart-btn');
 
 let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId;
+let fx = { rows: [], particles: [], bolts: [], shake: 0, flash: 0, last: 0 };
+
+// ---------- Sonido (Web Audio, sin archivos externos) ----------
+let audioCtx = null;
+function getAudio() {
+  if (!audioCtx) {
+    try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return null; }
+  }
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+function tone(freq, start, dur, type, vol, endFreq) {
+  const a = getAudio(); if (!a) return;
+  const t = a.currentTime + start;
+  const o = a.createOscillator(), g = a.createGain();
+  o.type = type;
+  o.frequency.setValueAtTime(freq, t);
+  if (endFreq) o.frequency.exponentialRampToValueAtTime(endFreq, t + dur);
+  g.gain.setValueAtTime(vol, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  o.connect(g).connect(a.destination);
+  o.start(t); o.stop(t + dur);
+}
+
+function noise(start, dur, vol, cutoff) {
+  const a = getAudio(); if (!a) return;
+  const t = a.currentTime + start;
+  const buf = a.createBuffer(1, Math.ceil(a.sampleRate * dur), a.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  const src = a.createBufferSource(); src.buffer = buf;
+  const f = a.createBiquadFilter(); f.type = 'lowpass';
+  f.frequency.setValueAtTime(cutoff, t);
+  f.frequency.exponentialRampToValueAtTime(80, t + dur);
+  const g = a.createGain();
+  g.gain.setValueAtTime(vol, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  src.connect(f).connect(g).connect(a.destination);
+  src.start(t);
+}
+
+function playLineSound(n) {
+  if (n >= 4) {
+    // Rayo: chasquido agudo + trueno grave
+    tone(1800, 0, 0.25, 'sawtooth', 0.25, 60);
+    noise(0, 1.1, 0.7, 6000);
+    tone(70, 0.05, 0.9, 'sawtooth', 0.35, 30);
+    return;
+  }
+  const notes = [523, 659, 784, 1047];
+  for (let i = 0; i <= n; i++) tone(notes[i], i * 0.07, 0.18, 'square', 0.12);
+}
 
 function createBoard() {
   return Array.from({ length: ROWS }, () => new Array(COLS).fill(0));
 }
 
 function randomPiece() {
-  const type = Math.floor(Math.random() * 7) + 1;
+  const type = Math.floor(Math.random() * (PIECES.length - 1)) + 1;
   const shape = PIECES[type].map(row => [...row]);
   return { type, shape, x: Math.floor(COLS / 2) - Math.floor(shape[0].length / 2), y: 0 };
 }
@@ -95,8 +150,10 @@ function merge() {
 
 function clearLines() {
   let cleared = 0;
+  const fullRows = [];
   for (let r = ROWS - 1; r >= 0; r--) {
     if (board[r].every(v => v !== 0)) {
+      fullRows.push({ row: r, cells: [...board[r]] });
       board.splice(r, 1);
       board.unshift(new Array(COLS).fill(0));
       cleared++;
@@ -109,7 +166,125 @@ function clearLines() {
     level = Math.floor(lines / 10) + 1;
     dropInterval = Math.max(100, 1000 - (level - 1) * 90);
     updateHUD();
+    startLineEffect(fullRows);
   }
+}
+
+// ---------- Efectos visuales ----------
+function startLineEffect(fullRows) {
+  const big = fullRows.length >= 4;
+  const now = performance.now();
+  fx.last = now;
+  for (const { row, cells } of fullRows) {
+    fx.rows.push({ row, cells, t0: now, dur: big ? 900 : 350, big, gone: cells.map(() => Math.random()) });
+    for (let c = 0; c < COLS; c++) {
+      const n = big ? 5 : 2;
+      for (let i = 0; i < n; i++) {
+        fx.particles.push({
+          x: c * BLOCK + Math.random() * BLOCK,
+          y: row * BLOCK + Math.random() * BLOCK,
+          vx: (Math.random() - 0.5) * (big ? 260 : 160),
+          vy: (Math.random() - (big ? 0.8 : 0.6)) * (big ? 260 : 200),
+          life: 0, max: (big ? 700 : 450) + Math.random() * 300,
+          size: 2 + Math.random() * 3,
+          color: big ? (Math.random() < 0.5 ? '#9e9e9e' : '#e0e0e0') : COLORS[cells[c]],
+          grav: big ? -60 : 500,
+        });
+      }
+    }
+  }
+  if (big) {
+    for (const { row } of fullRows) fx.bolts.push(makeBolt(row));
+    fx.shake = 1;
+    fx.flash = 1;
+  }
+  playLineSound(fullRows.length);
+}
+
+function makeBolt(row) {
+  const pts = [];
+  let x = Math.random() * COLS * BLOCK;
+  const ty = row * BLOCK + BLOCK / 2;
+  for (let y = 0; y < ty; y += 18) {
+    pts.push([x, y]);
+    x += (Math.random() - 0.5) * 50;
+  }
+  pts.push([x, ty]);
+  // ramal horizontal por la línea
+  const branch = [[x, ty]];
+  let bx = x;
+  const dir = x < COLS * BLOCK / 2 ? 1 : -1;
+  while (bx > 0 && bx < COLS * BLOCK) {
+    bx += dir * 16;
+    branch.push([bx, ty + (Math.random() - 0.5) * 16]);
+  }
+  return { pts, branch, t0: performance.now(), dur: 450 };
+}
+
+function drawEffects() {
+  const now = performance.now();
+  const dt = Math.min(50, now - fx.last) / 1000;
+  fx.last = now;
+
+  // filas que destellan / se desintegran
+  fx.rows = fx.rows.filter(f => now - f.t0 < f.dur);
+  for (const f of fx.rows) {
+    const p = (now - f.t0) / f.dur;
+    for (let c = 0; c < COLS; c++) {
+      if (f.big) {
+        if (p > f.gone[c] * 0.8) continue; // celda desintegrada
+        drawBlock(ctx, c, f.row, f.cells[c], BLOCK, 1 - p * 0.5);
+        ctx.fillStyle = `rgba(255,255,255,${0.9 * (1 - p)})`;
+        ctx.fillRect(c * BLOCK, f.row * BLOCK, BLOCK, BLOCK);
+      } else {
+        ctx.fillStyle = `rgba(255,255,255,${0.85 * (1 - p)})`;
+        ctx.fillRect(c * BLOCK, f.row * BLOCK, BLOCK, BLOCK);
+      }
+    }
+  }
+
+  // partículas
+  fx.particles = fx.particles.filter(q => q.life < q.max);
+  for (const q of fx.particles) {
+    q.life += dt * 1000;
+    q.vy += q.grav * dt;
+    q.x += q.vx * dt;
+    q.y += q.vy * dt;
+    ctx.globalAlpha = Math.max(0, 1 - q.life / q.max);
+    ctx.fillStyle = q.color;
+    ctx.fillRect(q.x, q.y, q.size, q.size);
+  }
+  ctx.globalAlpha = 1;
+
+  // rayos
+  fx.bolts = fx.bolts.filter(b => now - b.t0 < b.dur);
+  for (const b of fx.bolts) {
+    const p = (now - b.t0) / b.dur;
+    if (Math.random() < 0.25) continue; // parpadeo
+    ctx.save();
+    ctx.globalAlpha = 1 - p;
+    ctx.shadowColor = '#80d8ff';
+    ctx.shadowBlur = 18;
+    ctx.lineJoin = 'round';
+    for (const [w, col] of [[6, '#4fc3f7'], [2, '#ffffff']]) {
+      ctx.strokeStyle = col;
+      ctx.lineWidth = w;
+      for (const path of [b.pts, b.branch]) {
+        ctx.beginPath();
+        path.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
+  // destello de pantalla y temblor
+  if (fx.flash > 0) {
+    ctx.fillStyle = `rgba(200,230,255,${fx.flash * 0.45})`;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    fx.flash = Math.max(0, fx.flash - dt * 3);
+  }
+  if (fx.shake > 0) fx.shake = Math.max(0, fx.shake - dt * 1.8);
 }
 
 function ghostY() {
@@ -187,6 +362,8 @@ function drawGrid() {
 
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.save();
+  if (fx.shake > 0) ctx.translate((Math.random() - 0.5) * 12 * fx.shake, (Math.random() - 0.5) * 12 * fx.shake);
   drawGrid();
 
   // board
@@ -205,6 +382,9 @@ function draw() {
   for (let r = 0; r < current.shape.length; r++)
     for (let c = 0; c < current.shape[r].length; c++)
       drawBlock(ctx, current.x + c, current.y + r, current.shape[r][c], BLOCK);
+
+  drawEffects();
+  ctx.restore();
 }
 
 function drawNext() {
@@ -260,6 +440,7 @@ function loop(ts) {
 
 function init() {
   board = createBoard();
+  fx = { rows: [], particles: [], bolts: [], shake: 0, flash: 0, last: performance.now() };
   score = 0;
   lines = 0;
   level = 1;
@@ -277,6 +458,7 @@ function init() {
 }
 
 document.addEventListener('keydown', e => {
+  getAudio(); // el navegador exige un gesto del usuario para activar el audio
   if (e.code === 'KeyP') { togglePause(); return; }
   if (paused || gameOver) return;
   switch (e.code) {
