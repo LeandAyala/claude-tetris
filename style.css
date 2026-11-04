@@ -19,7 +19,18 @@ body {
   position: relative;
 }
 
+.title {
+  text-align: center;
+  font-size: 36px;
+  font-weight: 800;
+  letter-spacing: 12px;
+  text-indent: 12px;
+  color: #7aa2f7;
+  margin-bottom: 16px;
+}
+
 .game-container {
+  position: relative;
   display: flex;
   gap: 20px;
   align-items: flex-start;
