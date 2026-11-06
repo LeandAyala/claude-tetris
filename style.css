@@ -161,3 +161,78 @@ kbd {
 #restart-btn:hover {
   background: #9bbdff;
 }
+
+/* ---- Menú de pausa ---- */
+#pause-title {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: 4px;
+  color: #7aa2f7;
+}
+
+.menu-btn {
+  width: 180px;
+  background: #7aa2f7;
+  color: #0f0f17;
+  border: none;
+  border-radius: 6px;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: 1px;
+  transition: background 0.15s;
+}
+
+.menu-btn:hover,
+.menu-btn:focus-visible {
+  background: #9bbdff;
+}
+
+.menu-btn.secondary {
+  background: #22223a;
+  color: #aaa;
+  border: 1px solid #3a3a5a;
+}
+
+.menu-btn.secondary:hover,
+.menu-btn.secondary:focus-visible {
+  background: #2c2c4a;
+}
+
+.menu-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: #aaa;
+}
+
+.menu-field select {
+  background: #22223a;
+  color: #e0e0e0;
+  border: 1px solid #3a3a5a;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 13px;
+}
+
+#pause-controls {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+  font-size: 12px;
+  color: #aaa;
+}
+
+#pause-controls li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+#pause-controls.hidden {
+  display: none;
+}

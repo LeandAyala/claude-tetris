@@ -43,6 +43,13 @@ const overlayScore = document.getElementById('overlay-score');
 const restartBtn = document.getElementById('restart-btn');
 
 let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId;
+const pauseMenu = document.getElementById('pause-menu');
+const resumeBtn = document.getElementById('pause-resume-btn');
+const pauseRestartBtn = document.getElementById('pause-restart-btn');
+const startLevelSel = document.getElementById('start-level');
+const controlsBtn = document.getElementById('pause-controls-btn');
+const pauseControls = document.getElementById('pause-controls');
+let startLevel = 1; // nivel inicial elegido en el menú de pausa (se aplica en init)
 let fx = { rows: [], particles: [], bolts: [], shake: 0, flash: 0, last: 0 };
 
 // ---------- Sonido (Web Audio, sin archivos externos) ----------
@@ -163,7 +170,7 @@ function clearLines() {
   if (cleared) {
     lines += cleared;
     score += (LINE_SCORES[cleared] || 0) * level;
-    level = Math.floor(lines / 10) + 1;
+    level = Math.max(startLevel, Math.floor(lines / 10) + 1);
     dropInterval = Math.max(100, 1000 - (level - 1) * 90);
     updateHUD();
     startLineEffect(fullRows);
@@ -406,19 +413,40 @@ function endGame() {
   overlay.classList.remove('hidden');
 }
 
+// ---------- Menú de pausa ----------
 function togglePause() {
   if (gameOver) return;
   paused = !paused;
   if (!paused) {
+    pauseMenu.classList.add('hidden');
+    // quitar el foco para que Space/Enter no activen un botón tras reanudar
+    if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
     lastTime = performance.now();
+    dropAccum = 0;
+    cancelAnimationFrame(animId);
     loop(lastTime);
   } else {
     cancelAnimationFrame(animId);
-    overlayTitle.textContent = 'PAUSA';
-    overlayScore.textContent = '';
-    overlay.classList.remove('hidden');
+    pauseMenu.classList.remove('hidden');
+    resumeBtn.focus();
   }
 }
+
+function restartFromMenu() {
+  if (document.activeElement) document.activeElement.blur();
+  init();
+}
+
+resumeBtn.addEventListener('click', togglePause);
+pauseRestartBtn.addEventListener('click', restartFromMenu);
+// El selector solo se lee en init(): cambiarlo no afecta a la partida en curso.
+function readStartLevel() {
+  return Math.min(10, Math.max(1, parseInt(startLevelSel.value, 10) || 1));
+}
+controlsBtn.addEventListener('click', () => {
+  const open = pauseControls.classList.toggle('hidden') === false;
+  controlsBtn.setAttribute('aria-expanded', String(open));
+});
 
 function loop(ts) {
   if (gameOver || paused) return;
@@ -443,24 +471,30 @@ function init() {
   fx = { rows: [], particles: [], bolts: [], shake: 0, flash: 0, last: performance.now() };
   score = 0;
   lines = 0;
-  level = 1;
+  startLevel = readStartLevel();
+  level = startLevel;
   paused = false;
   gameOver = false;
-  dropInterval = 1000;
+  dropInterval = Math.max(100, 1000 - (level - 1) * 90);
   dropAccum = 0;
   lastTime = performance.now();
   next = randomPiece();
   spawn();
   updateHUD();
   overlay.classList.add('hidden');
+  pauseMenu.classList.add('hidden');
   cancelAnimationFrame(animId);
   animId = requestAnimationFrame(loop);
 }
 
 document.addEventListener('keydown', e => {
   getAudio(); // el navegador exige un gesto del usuario para activar el audio
-  if (e.code === 'KeyP') { togglePause(); return; }
-  if (paused || gameOver) return;
+  if (e.code === 'KeyP' || e.code === 'Escape') {
+    if (e.target === startLevelSel) return; // Esc cierra el desplegable sin reanudar
+    if (!e.repeat) togglePause();
+    return;
+  }
+  if (paused || gameOver) return; // con el menú abierto no se procesan teclas de juego
   switch (e.code) {
     case 'ArrowLeft':
       if (!collide(current.shape, current.x - 1, current.y)) current.x--;
