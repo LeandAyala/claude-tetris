@@ -47,7 +47,33 @@
         <div class="overlay-box">
           <p id="overlay-title">GAME OVER</p>
           <p id="overlay-score"></p>
+          <div id="name-entry" class="hidden">
+            <p class="rec-hint">¡Nuevo récord! Escribe tu nombre</p>
+            <div class="rec-row">
+              <input id="name-input" type="text" maxlength="12" autocomplete="off" placeholder="Nombre" />
+              <button id="save-name-btn" class="rec-btn">Guardar</button>
+            </div>
+          </div>
+          <ol id="overlay-records" class="rec-list"></ol>
           <button id="restart-btn">Reiniciar</button>
+        </div>
+      </div>
+
+      <div id="start-screen" class="overlay">
+        <div class="overlay-box">
+          <p class="rec-title">TOP 5</p>
+          <ol id="start-records" class="rec-list"></ol>
+          <p class="rec-stat">Mejor combo: <span id="best-combo">0</span></p>
+          <p class="rec-stat">Líneas máximas: <span id="max-lines">0</span></p>
+          <button id="play-btn">Jugar</button>
+          <div id="clear-area">
+            <button id="clear-records-btn" class="rec-btn">Borrar récords</button>
+            <div id="clear-confirm" class="hidden">
+              <span class="rec-hint">¿Borrar todos los récords?</span>
+              <button id="clear-yes-btn" class="rec-btn">Sí, borrar</button>
+              <button id="clear-no-btn" class="rec-btn">Cancelar</button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
